@@ -2,9 +2,15 @@
 
 import { useState } from "react";
 
+interface Results {
+  positive: number;
+  negative: number;
+  neutral: number;
+}
+
 export default function SentimentAnalysisPage() {
   const [comments, setComments] = useState("");
-  const [results, setResults] = useState(null);
+  const [results, setResults] = useState<Results | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   const handleAnalyze = async () => {

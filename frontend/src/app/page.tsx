@@ -1,6 +1,5 @@
 "use client";
 
-import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 

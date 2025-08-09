@@ -2,7 +2,7 @@
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 
 // Facebook Comment interface based on backend schema
@@ -18,7 +18,11 @@ interface FacebookComment {
     attachment?: {
         type?: string;
         url?: string;
-        media?: any;
+        media?: {
+            image?: {
+                src?: string;
+            };
+        };
     };
 }
 
@@ -51,56 +55,72 @@ export default function PostDetailPage() {
         }
     }, [isLoading, isAuthenticated, router]);
 
-    useEffect(() => {
-        if (!isLoading && isAuthenticated && token && postId) {
-            // Try to get post data from URL params first
-            const postDataParam = searchParams?.get('postData');
-            if (postDataParam) {
-                try {
-                    const postData = JSON.parse(postDataParam);
-                    setPost(postData);
-                    setLoadingPost(false);
-                    // Only fetch comments
-                    fetchComments();
-                } catch (error) {
-                    console.error("Error parsing post data from URL:", error);
-                    // Fallback to fetching both post and comments
-                    fetchPostAndComments();
-                }
-            } else {
-                // Fallback to fetching both post and comments
-                fetchPostAndComments();
-            }
-        }
-    }, [isLoading, isAuthenticated, token, postId, searchParams]);
-
-    const fetchPostAndComments = async () => {
+    const fetchComments = useCallback(async () => {
         if (!token || !postId) {
             setError("Missing authentication token or post ID");
             return;
         }
 
-        setLoadingPost(true);
-        setError(null);
-
+        setLoadingComments(true);
         try {
-            const postResponse = await fetchSinglePost(postId);
-            if (postResponse) {
-                setPost(postResponse);
+            const response = await fetch(
+                `${process.env.NEXT_PUBLIC_API_URL}/api/v1/facebook/posts/${postId}/comments?limit=50`,
+                {
+                    method: "GET",
+                    headers: {
+                        "Authorization": `Bearer ${token}`,
+                        "Content-Type": "application/json",
+                    },
+                }
+            );
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ detail: response.statusText }));
+                throw new Error(`Failed to fetch comments: ${errorData.detail || response.statusText}`);
             }
-            setLoadingPost(false);
+
+            const commentsData = await response.json();
             
-            // Fetch comments after post is loaded
-            await fetchComments();
-        } catch (error: any) {
-            console.error("Error fetching post and comments:", error);
-            setError(error.message || "Failed to load post and comments");
-            setLoadingPost(false);
+            // Fix field mapping: Facebook API returns 'from' but we expect 'from_user'
+            const mappedComments = commentsData.map((comment: {
+                id: string;
+                message?: string;
+                created_time: string;
+                from?: {
+                    id: string;
+                    name: string;
+                    picture?: string;
+                };
+                from_user?: {
+                    id: string;
+                    name: string;
+                    picture?: string;
+                };
+                attachment?: {
+                    type?: string;
+                    url?: string;
+                    media?: {
+                        image?: {
+                            src?: string;
+                        };
+                    };
+                };
+            }) => ({
+                ...comment,
+                from_user: comment.from || comment.from_user
+            }));
+            
+            setComments(mappedComments);
+        } catch (error: unknown) {
+            console.error("Error fetching comments:", error);
+            const errorMessage = error instanceof Error ? error.message : "Failed to load comments";
+            setError(errorMessage);
+        } finally {
             setLoadingComments(false);
         }
-    };
+    }, [token, postId]);
 
-    const fetchSinglePost = async (postId: string): Promise<FacebookPost | null> => {
+    const fetchSinglePost = useCallback(async (postId: string): Promise<FacebookPost | null> => {
         try {
             // Try the dedicated single post endpoint first
             const response = await fetch(
@@ -140,52 +160,61 @@ export default function PostDetailPage() {
             const posts: FacebookPost[] = responseData.data || [];
             return posts.find(p => p.id === postId) || null;
             
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("Error in fetchSinglePost:", error);
             throw error;
         }
-    };
+    }, [token]);
 
-    const fetchComments = async () => {
+    const fetchPostAndComments = useCallback(async () => {
         if (!token || !postId) {
             setError("Missing authentication token or post ID");
             return;
         }
 
-        setLoadingComments(true);
+        setLoadingPost(true);
+        setError(null);
+
         try {
-            const response = await fetch(
-                `${process.env.NEXT_PUBLIC_API_URL}/api/v1/facebook/posts/${postId}/comments?limit=50`,
-                {
-                    method: "GET",
-                    headers: {
-                        "Authorization": `Bearer ${token}`,
-                        "Content-Type": "application/json",
-                    },
-                }
-            );
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ detail: response.statusText }));
-                throw new Error(`Failed to fetch comments: ${errorData.detail || response.statusText}`);
+            const postResponse = await fetchSinglePost(postId);
+            if (postResponse) {
+                setPost(postResponse);
             }
-
-            const commentsData = await response.json();
+            setLoadingPost(false);
             
-            // Fix field mapping: Facebook API returns 'from' but we expect 'from_user'
-            const mappedComments = commentsData.map((comment: any) => ({
-                ...comment,
-                from_user: comment.from || comment.from_user
-            }));
-            
-            setComments(mappedComments);
-        } catch (error: any) {
-            console.error("Error fetching comments:", error);
-            setError(error.message || "Failed to load comments");
-        } finally {
+            // Fetch comments after post is loaded
+            await fetchComments();
+        } catch (error: unknown) {
+            console.error("Error fetching post and comments:", error);
+            const errorMessage = error instanceof Error ? error.message : "Failed to load post and comments";
+            setError(errorMessage);
+            setLoadingPost(false);
             setLoadingComments(false);
         }
-    };
+    }, [token, postId, fetchComments, fetchSinglePost]);
+
+    useEffect(() => {
+        if (!isLoading && isAuthenticated && token && postId) {
+            // Try to get post data from URL params first
+            const postDataParam = searchParams?.get('postData');
+            if (postDataParam) {
+                try {
+                    const postData = JSON.parse(postDataParam);
+                    setPost(postData);
+                    setLoadingPost(false);
+                    // Only fetch comments
+                    fetchComments();
+                } catch (error) {
+                    console.error("Error parsing post data from URL:", error);
+                    // Fallback to fetching both post and comments
+                    fetchPostAndComments();
+                }
+            } else {
+                // Fallback to fetching both post and comments
+                fetchPostAndComments();
+            }
+        }
+    }, [isLoading, isAuthenticated, token, postId, searchParams, fetchComments, fetchPostAndComments]);
 
     const formatDate = (dateString: string) => {
         return new Date(dateString).toLocaleString();
@@ -302,7 +331,7 @@ export default function PostDetailPage() {
                     ) : (
                         <div className="p-6 text-center">
                             <h1 className="text-2xl font-bold text-gray-800 mb-2">Post Not Found</h1>
-                            <p className="text-gray-600">The requested post could not be found or you don't have permission to view it.</p>
+                            <p className="text-gray-600">The requested post could not be found or you don&apos;t have permission to view it.</p>
                         </div>
                     )}
                 </div>

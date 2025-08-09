@@ -2,7 +2,7 @@
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 
 // Define a type for the Facebook post structure on the frontend
@@ -46,14 +46,7 @@ export default function DashboardPage() {
         }
     }, [isLoading, isAuthenticated, router]);
 
-    // Auto-load posts when user is authenticated
-    useEffect(() => {
-        if (!isLoading && isAuthenticated && token) {
-            handleFetchFbPosts(false);
-        }
-    }, [isLoading, isAuthenticated, token]);
-
-    const handleFetchFbPosts = async (isLoadMore: boolean = false) => {
+    const handleFetchFbPosts = useCallback(async (isLoadMore: boolean = false) => {
         if (!token) {
             setFbPostsError("Authentication token not found. Please log in again.");
             return;
@@ -108,9 +101,10 @@ export default function DashboardPage() {
             
             setHasNextPage(hasNext);
             setNextCursor(nextCur);
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("Error fetching Facebook posts:", error);
-            setFbPostsError(error.message || "An unknown error occurred while fetching posts.");
+            const errorMessage = error instanceof Error ? error.message : "An unknown error occurred while fetching posts.";
+            setFbPostsError(errorMessage);
         }
         
         if (isLoadMore) {
@@ -118,7 +112,14 @@ export default function DashboardPage() {
         } else {
             setFbPostsLoading(false);
         }
-    };
+    }, [token, nextCursor, setFbPostsLoading, setFbPostsError, setFbPosts, setHasNextPage, setNextCursor, setLoadingMore]);
+
+    // Auto-load posts when user is authenticated
+    useEffect(() => {
+        if (!isLoading && isAuthenticated && token) {
+            handleFetchFbPosts(false);
+        }
+    }, [isLoading, isAuthenticated, token, handleFetchFbPosts]);
 
     const handleLoadMorePosts = () => {
         handleFetchFbPosts(true);
@@ -239,7 +240,7 @@ export default function DashboardPage() {
                                 </div>
                             ))}
                             {!fbPostsLoading && fbPosts.length === 0 && !fbPostsError && (
-                                <p className="text-gray-600 text-center py-8">No Facebook posts found. Make sure you've granted the 'user_posts' permission or have recent posts.</p>
+                                <p className="text-gray-600 text-center py-8">No Facebook posts found. Make sure you&apos;ve granted the &apos;user_posts&apos; permission or have recent posts.</p>
                             )}
                         </div>
                         
