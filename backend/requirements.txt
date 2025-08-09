@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+httpx
+python-jose[cryptography]
+oauthlib 
+transformers
+torch
+accelerate
+bitsandbytes
+trl
+peft
+pillow
+tqdm
