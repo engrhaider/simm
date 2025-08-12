@@ -14,9 +14,9 @@ def load_model():
     print("Hugging Face loggedin successfully.")
 
     backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    # lora_adapter = os.path.join(backend_dir, "../../../fine-tuned/exp-2-twitter-dataset-lora-r-16-la-32-lr-5e5-cosine")
+    # local path
+    # lora_adapter = "/Users/engrhaider/web-workbench/sa-inf-model/fine-tuned/exp-2-twitter-dataset-lora-r-16-la-32-lr-5e5-cosine"
     lora_adapter = os.path.join(backend_dir, "fine-tuned/exp-2-twitter-dataset-lora-r-16-la-32-lr-5e5-cosine")
-    print("LORA ADAPTER DIR === ", lora_adapter)
     GEMMA3="google/gemma-3-4b-it"
 
     # quant_config = BitsAndBytesConfig(
@@ -32,12 +32,12 @@ def load_model():
         GEMMA3,
         # quantization_config=quant_config,
         attn_implementation="eager",
-        device_map="auto",
-        torch_dtype="auto",
+        device_map="cpu",
+        torch_dtype=torch.bfloat16,
         low_cpu_mem_usage=True
     )
     merged_model = PeftModel.from_pretrained(base_model, lora_adapter).merge_and_unload()
-    processor = AutoProcessor.from_pretrained(GEMMA3, device_map=torch.float16)
+    processor = AutoProcessor.from_pretrained(GEMMA3, device_map=torch.bfloat16)
     merged_model.eval()
 
     return merged_model, processor
@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI):
     app.state.processor = None
     torch.cuda.empty_cache()
 
-app = FastAPI(title="Facebook Instagram API Integration", lifespan=lifespan)
+app = FastAPI(title="Multimodal Sentiment Analysis Inference", lifespan=lifespan)
 
 # Set up CORS
 origins = [

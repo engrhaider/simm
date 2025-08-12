@@ -2,10 +2,8 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 import torch
 from collections import Counter
-
-# No need for PIL/ImageFile here as we are only processing text comments
-# from PIL import Image, ImageFile
-# ImageFile.LOAD_TRUNCATED_IMAGES = True
+import re
+from typing import List, Optional
 
 router = APIRouter()
 
@@ -15,16 +13,24 @@ class SentimentRequest(BaseModel):
 
 
 class SentimentResponse(BaseModel):
-  positive: float
-  negative: float
-  neutral: float
+  comments: list[str]
+  predictions: list[str]
+  image_urls: list[list[str]]
+  percentage_positive: float
+  percentage_negative: float
+  percentage_neutral: float 
 
 
-# --- Helper function to create the prompt for the model ---
-def generate_prompt_from_text(comment_text: str):
-  """
-    Formats a single text comment into the message structure expected by the model.
-    """
+def extract_image_urls(comment_text: str) -> List[str]:
+  # Regex pattern to match image URLs with png, jpeg, jpg extensions
+  image_url_pattern = r'https?://[^\s<>"]+\.(?:png|jpe?g)(?:\?[^\s<>"]*)?'
+  # Find all matches in the comment text
+  image_urls = re.findall(image_url_pattern, comment_text, re.IGNORECASE)
+  
+  return image_urls
+
+
+def generate_prompt_from_text(comment_text: str, image_urls: List[str] = None):
   # The user message containing the comment to be analyzed
   user_message = {
     "role": "user",
@@ -36,7 +42,15 @@ def generate_prompt_from_text(comment_text: str):
     ],
   }
 
-  # The full message list including the system prompt
+  # Add all image URLs found in the comment
+  if image_urls:
+    for image_url in image_urls:
+      user_message['content'].append({
+        "type": "image",
+        "image": image_url,
+      })
+
+  # the full message list including the system prompt
   messages = [
     {
       "role": "system",
@@ -46,7 +60,6 @@ def generate_prompt_from_text(comment_text: str):
     user_message,
   ]
 
-  # The final structure expected by the prediction function
   return {'messages': messages}
 
 
@@ -86,16 +99,12 @@ def run_batch_prediction(data, model, processor):
     # Decode the generated tokens back into a string
     response = processor.decode(generation, skip_special_tokens=True)
 
-    # Clean up the response and add it to our list of predictions
-    # .lower() makes matching robust, .strip() removes whitespace
     predictions.append(response.strip().lower())
-
-    print(predictions)
+    # print(predictions)
 
   return predictions
 
 
-# --- API Endpoint ---
 @router.post("/predict", response_model=SentimentResponse)
 async def analyze_sentiment(req: Request, payload: SentimentRequest):
   """
@@ -108,15 +117,25 @@ async def analyze_sentiment(req: Request, payload: SentimentRequest):
   if not model or not processor:
     raise HTTPException(status_code=503, detail="Model is not loaded. Please wait or check server status.")
 
-  # Split the incoming multiline string into a list of individual comments
-  # and filter out any empty or whitespace-only lines.
-  comments = [line.strip() for line in payload.comments.split('\n') if line.strip()]
+
+  # get the list of comments separated by delimiter <==>
+  comments = [line.strip() for line in payload.comments.split('<==>') if line.strip()]
 
   if not comments:
     raise HTTPException(status_code=400, detail="No valid comments provided for analysis.")
 
-  # convert each comment string into the required prompt format.
-  data = [generate_prompt_from_text(comment) for comment in comments]
+  # Extract image URLs from each comment and prepare data
+  all_image_urls = []
+  data = []
+  
+  for comment in comments:
+    # Extract image URLs from the current comment
+    comment_image_urls = extract_image_urls(comment)
+    all_image_urls.append(comment_image_urls)
+    
+    # Create prompt with both text and images
+    prompt_data = generate_prompt_from_text(comment, comment_image_urls)
+    data.append(prompt_data)
 
   # get the list of sentiment predictions (e.g., ['positive', 'negative', 'positive'])
   sentiment_results = run_batch_prediction(data, model, processor)
@@ -133,8 +152,12 @@ async def analyze_sentiment(req: Request, payload: SentimentRequest):
   negative_perc = (sentiment_counts.get('negative', 0) / total_predictions) * 100
   neutral_perc = (sentiment_counts.get('neutral', 0) / total_predictions) * 100
 
+
   return {
-    "positive": positive_perc,
-    "negative": negative_perc,
-    "neutral": neutral_perc,
+    "comments": comments,
+    "predictions": sentiment_results,
+    "image_urls": all_image_urls,
+    "percentage_positive": positive_perc,
+    "percentage_negative": negative_perc,
+    "percentage_neutral": neutral_perc,
   }
