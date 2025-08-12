@@ -12,11 +12,11 @@ import torch
 def load_model():
     login(os.getenv("HUGGING_FACE_TOKEN"))
     print("Hugging Face loggedin successfully.")
-
-    backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    # get current directory
+    current_dir = os.path.dirname(os.path.abspath(__file__))
     # local path
     # lora_adapter = "/Users/engrhaider/web-workbench/sa-inf-model/fine-tuned/exp-2-twitter-dataset-lora-r-16-la-32-lr-5e5-cosine"
-    lora_adapter = os.path.join(backend_dir, "lora_adapter")
+    lora_adapter = os.path.join(current_dir, "./lora_adapter")
     GEMMA3="google/gemma-3-4b-it"
 
     # quant_config = BitsAndBytesConfig(
@@ -32,9 +32,10 @@ def load_model():
         GEMMA3,
         # quantization_config=quant_config,
         attn_implementation="eager",
-        #device_map="cpu", # for apple silicon chips
-        # torch_dtype=torch.bfloat16, # for apple silicon chips
         device_map="auto",
+        torch_dtype="auto",
+        # device_map="cpu", # for apple silicon chips
+        # torch_dtype=torch.bfloat16, # for apple silicon chips
         low_cpu_mem_usage=True
     )
     merged_model = PeftModel.from_pretrained(base_model, lora_adapter).merge_and_unload()
