@@ -42,7 +42,7 @@ async def auth_facebook_callback(request: Request, code: Optional[str] = None, e
     if not code:
         raise HTTPException(status_code=400, detail="Missing authorization code from Facebook.")
 
-    # 1. Exchange code for an access token
+    # Exchange code for an access token
     token_url = f"{settings.FB_GRAPH_API_URL}/oauth/access_token"
     token_params = {
         "client_id": settings.FACEBOOK_APP_ID,
@@ -67,8 +67,6 @@ async def auth_facebook_callback(request: Request, code: Optional[str] = None, e
     if not user_access_token:
         raise HTTPException(status_code=500, detail="Failed to retrieve access token from Facebook.")
 
-    # 2. (Optional but recommended) Get a long-lived access token
-    # This is important because the default token is short-lived (around 1-2 hours)
     long_lived_token_url = f"{settings.FB_GRAPH_API_URL}/oauth/access_token"
     long_lived_params = {
         "grant_type": "fb_exchange_token",
@@ -86,7 +84,7 @@ async def auth_facebook_callback(request: Request, code: Optional[str] = None, e
             # Log this but don't fail the login, proceed with short-lived token
             print(f"Could not exchange for long-lived token: {e}. Proceeding with short-lived token.")
 
-    # 3. Fetch basic user profile information
+    # Fetch basic user profile information
     user_info_url = f"{settings.FB_GRAPH_API_URL}/me"
     user_info_params = {"fields": "id,name,email,picture", "access_token": user_access_token}
     async with AsyncClient() as client:
@@ -97,8 +95,7 @@ async def auth_facebook_callback(request: Request, code: Optional[str] = None, e
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Could not fetch user info from Facebook: {str(e)}")
 
-    # 4. Create a JWT for your application
-    # You might want to store user_id, name, email, and the facebook_access_token in your JWT or a session
+    # create jwt token
     app_jwt_data = {
         "sub": user_data.get("id"), # Use Facebook user ID as subject
         "name": user_data.get("name"),
