@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, PieLabelRenderProps, LegendPayload, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, PieLabelRenderProps, LegendPayload } from 'recharts';
 
 interface Results {
   comments: string[];
