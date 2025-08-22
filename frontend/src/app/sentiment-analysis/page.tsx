@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, PieLabelRenderProps, LegendPayload } from 'recharts';
 
 interface Results {
@@ -13,9 +13,11 @@ interface Results {
 }
 
 export default function SentimentAnalysisPage() {
+  const [sentimentSurveyUrl, setSentimentSurveyUrl] = useState("");
   const [comments, setComments] = useState("");
   const [results, setResults] = useState<Results | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'positive' | 'negative' | 'neutral'>('all');
   const resultsRef = useRef<HTMLDivElement>(null);
 
@@ -42,9 +44,32 @@ export default function SentimentAnalysisPage() {
     setComments(newText);
   };
 
+  useEffect(() => {
+    if (results) {
+      let qualtricsSurveyUrl = `https://shusls.eu.qualtrics.com/jfe/form/${process.env.NEXT_PUBLIC_QUALTRICS_SENTIMENTS_SURVEY_ID}?`;
+      const qualtricsSurveyParams = new URLSearchParams();
+      results.predictions.slice(0, 6).forEach((prediction, index) => {
+        const counter = index + 1;
+        qualtricsSurveyParams.append(`c${counter}`, results.comments[index]);
+        qualtricsSurveyParams.append(`s${counter}`, prediction);
+        if (results.image_urls[index] !== undefined && results.image_urls[index][0] !== undefined) {
+            qualtricsSurveyParams.append(`img${counter}`, results.image_urls[index][0]);
+        }
+      });
+      qualtricsSurveyUrl += qualtricsSurveyParams.toString();
+      setSentimentSurveyUrl(qualtricsSurveyUrl);
+    }
+  }, [results]);
+
   const handleAnalyze = async () => {
+    if (comments.split("<==>").length < 6){
+        setError("Please enter at least 6 comments, separated by <==>.");
+        return;
+    }
+    setError(null);
     setIsLoading(true);
     setResults(null);
+    setSentimentSurveyUrl("");
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/sentiment/predict`, {
         method: 'POST',
@@ -58,6 +83,7 @@ export default function SentimentAnalysisPage() {
       }
       const data = await response.json();
       setResults(data);
+
       
       // Scroll to results section after setting results
       setTimeout(() => {
@@ -195,7 +221,7 @@ export default function SentimentAnalysisPage() {
           <h1 className="text-3xl font-bold text-center mb-8">
             Multimodal Sentiment Analysis - understand your audience
           </h1>
-          <p className="text-sm text-gray-500  mb-4">Paste your Social media (Facebook/Instagram/Tiktok) post comments here or enter the comments manually separated by <span className="bg-gray-200 dark:bg-gray-700 rounded-md px-2 py-1 text-sm">&#x3C;==&#x3E;</span> delimiter to perform sentiment analysis. You can enter images urls in comments to perform multimodal sentiment analysis.</p>
+          <p className="text-lg text-gray-500  mb-4">Paste your <b>Social media (Facebook/Instagram/Tiktok) post comments</b> here or enter the comments manually separated by <span className="bg-gray-200 dark:bg-gray-700 rounded-md px-2 py-1 text-sm"><b>&#x3C;==&#x3E;</b></span> delimiter to perform sentiment analysis. You can enter images urls in comments to perform multimodal sentiment analysis.</p>
           <textarea
             className="w-full h-64 p-4 border border-gray-300 dark:border-gray-600 rounded-md bg-gray-50 dark:bg-gray-700 text-base focus:ring-2 focus:ring-blue-500"
             placeholder="Enter your comments here..."
@@ -203,6 +229,11 @@ export default function SentimentAnalysisPage() {
             onChange={(e) => setComments(e.target.value)}
             onPaste={handlePaste}
           />
+            {
+                error && (
+                    <div className="text-red-500 text-sm mt-2">{error}</div>
+                )
+            }
           <button
             onClick={handleAnalyze}
             className="w-full mt-4 py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-md disabled:bg-gray-400"
@@ -365,6 +396,20 @@ export default function SentimentAnalysisPage() {
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+        {sentimentSurveyUrl && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+            <h2 className="text-2xl font-semibold mb-6 text-center">
+              Please take a moment to fill out this short feedback survey.
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+              We would like to know your opinion on the sentiment of the comments.
+            </p>
+            <a href={sentimentSurveyUrl} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-md">
+              Take the survey
+            </a>
           </div>
         )}
       </div>
